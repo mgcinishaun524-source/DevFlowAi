@@ -1,0 +1,6 @@
+{
+  "name": "DevFlow AI",
+  "description": "Smart developer productivity and project management platform with AI insights and real-time collaboration.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

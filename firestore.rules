@@ -1,0 +1,103 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+    
+    // ===============================================================
+    // Assumed Data Model
+    // ===============================================================
+    //
+    // Collection: users
+    // Document ID: {uid}
+    // Fields:
+    //   - uid: string (required)
+    //   - email: string (required)
+    //   - displayName: string
+    //   - photoURL: string
+    //   - githubUsername: string
+    //   - createdAt: timestamp
+    //
+    // Collection: projects
+    // Document ID: {projectId}
+    // Fields:
+    //   - name: string (required)
+    //   - description: string
+    //   - ownerId: string (required)
+    //   - members: list (uids)
+    //   - githubRepo: string
+    //   - createdAt: timestamp
+    //
+    // Collection: projects/{projectId}/tasks
+    // Document ID: {taskId}
+    // Fields:
+    //   - projectId: string (required)
+    //   - title: string (required)
+    //   - description: string
+    //   - status: string (todo, in-progress, done)
+    //   - priority: string (low, medium, high)
+    //   - assigneeId: string
+    //   - dueDate: timestamp
+    //   - createdAt: timestamp
+    //
+    // ===============================================================
+
+    // Helper Functions
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+
+    function isOwner(userId) {
+      return isAuthenticated() && request.auth.uid == userId;
+    }
+
+    function isProjectMember(projectId) {
+      let project = get(/databases/$(database)/documents/projects/$(projectId)).data;
+      return isAuthenticated() && (project.ownerId == request.auth.uid || request.auth.uid in project.members);
+    }
+
+    function isValidUser(data) {
+      return data.keys().hasAll(['uid', 'email']) &&
+             data.uid is string &&
+             data.email is string &&
+             data.email.matches("^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\\.[a-zA-Z]{2,}$");
+    }
+
+    function isValidProject(data) {
+      return data.keys().hasAll(['name', 'ownerId']) &&
+             data.name is string && data.name.size() > 0 && data.name.size() < 100 &&
+             data.ownerId == request.auth.uid;
+    }
+
+    function isValidTask(data) {
+      return data.keys().hasAll(['projectId', 'title', 'status']) &&
+             data.title is string && data.title.size() > 0 && data.title.size() < 200 &&
+             data.status in ['todo', 'in-progress', 'done'];
+    }
+
+    // Rules
+    match /users/{uid} {
+      allow read: if isAuthenticated();
+      allow create: if isOwner(uid) && isValidUser(request.resource.data);
+      allow update: if isOwner(uid) && isValidUser(request.resource.data);
+    }
+
+    match /projects/{projectId} {
+      allow read: if isAuthenticated(); // Simplified for demo, ideally only members
+      allow create: if isAuthenticated() && isValidProject(request.resource.data);
+      allow update: if isAuthenticated() && (request.auth.uid == resource.data.ownerId || request.auth.uid in resource.data.members);
+      allow delete: if isAuthenticated() && request.auth.uid == resource.data.ownerId;
+
+      match /tasks/{taskId} {
+        allow read: if isAuthenticated();
+        allow create: if isAuthenticated() && isValidTask(request.resource.data);
+        allow update: if isAuthenticated() && isValidTask(request.resource.data);
+        allow delete: if isAuthenticated();
+      }
+    }
+
+    match /repositories/{repoId} {
+      allow read: if isAuthenticated();
+      allow write: if false; // Only server-side or admin
+    }
+  }
+}
